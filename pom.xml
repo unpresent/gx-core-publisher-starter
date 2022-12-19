@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>ru.gx.core</groupId>
+    <artifactId>gx-core-publisher-starter</artifactId>
+    <version>1.5.23</version>
+
+    <properties>
+        <encoding>UTF-8</encoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven-compiler-plugin.version>3.10.0</maven-compiler-plugin.version>
+        <spring-boot-maven-plugin.version>2.6.7</spring-boot-maven-plugin.version>
+        <gx-core-dependencies.version>1.5.23</gx-core-dependencies.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>ru.gx.core</groupId>
+                <artifactId>gx-core-dependencies</artifactId>
+                <version>${gx-core-dependencies.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>ru.gx.core</groupId>
+            <artifactId>gx-core-root-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ru.gx.core</groupId>
+            <artifactId>gx-core-jpa-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ru.gx.core</groupId>
+            <artifactId>gx-core-redis-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ru.gx.core</groupId>
+            <artifactId>gx-core-std-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ru.gx.core</groupId>
+            <artifactId>gx-core-rest-api-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <encoding>${encoding}</encoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot-maven-plugin.version}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
