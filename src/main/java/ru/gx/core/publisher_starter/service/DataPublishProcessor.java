@@ -1,7 +1,5 @@
 package ru.gx.core.publisher_starter.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +18,7 @@ import ru.gx.core.longtime.LongtimeProcess;
 import ru.gx.core.longtime.LongtimeProcessService;
 import ru.gx.core.messaging.Message;
 import ru.gx.core.messaging.MessageBody;
-import ru.gx.core.messaging.StandardMessagesPrioritizedQueue;
+import ru.gx.core.messaging.MessagesPrioritizedQueue;
 import ru.gx.core.publisher_starter.event.DataPublishEvent;
 import ru.gx.core.redis.load.PublishSnapshotContext;
 import ru.gx.core.redis.upload.AbstractRedisOutcomeCollectionsConfiguration;
@@ -30,8 +28,6 @@ import ru.gx.core.redis.upload.RedisOutcomeCollectionsUploader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-
-import static lombok.AccessLevel.PROTECTED;
 
 @Slf4j
 @Component
@@ -49,7 +45,7 @@ public class DataPublishProcessor {
     private int batchSize;
 
     @NotNull
-    private final StandardMessagesPrioritizedQueue standardMessagesPrioritizedQueue;
+    private final MessagesPrioritizedQueue messagesPrioritizedQueue;
 
     @NotNull
     private final LongtimeProcessService longtimeProcessService;
@@ -63,13 +59,13 @@ public class DataPublishProcessor {
             @NotNull final AbstractEntitiesUploadingConfiguration entitiesUploadingConfiguration,
             @NotNull final RedisOutcomeCollectionsUploader redisUploader,
             @NotNull final AbstractRedisOutcomeCollectionsConfiguration redisOutcomeTopicsConfiguration,
-            @NotNull StandardMessagesPrioritizedQueue standardMessagesPrioritizedQueue,
-            @NotNull LongtimeProcessService longtimeProcessService
+            @NotNull final MessagesPrioritizedQueue messagesPrioritizedQueue,
+            @NotNull final LongtimeProcessService longtimeProcessService
     ) {
         this.entitiesUploadingConfiguration = entitiesUploadingConfiguration;
         this.redisUploader = redisUploader;
         this.redisOutcomeTopicsConfiguration = redisOutcomeTopicsConfiguration;
-        this.standardMessagesPrioritizedQueue = standardMessagesPrioritizedQueue;
+        this.messagesPrioritizedQueue = messagesPrioritizedQueue;
         this.longtimeProcessService = longtimeProcessService;
     }
 
@@ -77,7 +73,7 @@ public class DataPublishProcessor {
         final var longtimeProcess = this.longtimeProcessService.createLongtimeProcess(null);
         final var dataPublishEvent = new DataPublishEvent(longtimeProcess.getId());
         dataPublishEvent.setChannelDescriptorNames(channelNames);
-        this.standardMessagesPrioritizedQueue
+        this.messagesPrioritizedQueue
                 .pushMessage(1, dataPublishEvent);
         return longtimeProcess;
     }
@@ -195,7 +191,7 @@ public class DataPublishProcessor {
                 this.longtimeProcessService.finishLongtimeProcess(event.getLongtimeProcessId());
             } else {
                 // отсылаем следующее событие на выгрузку пакета
-                this.standardMessagesPrioritizedQueue.pushMessage(1, event);
+                this.messagesPrioritizedQueue.pushMessage(1, event);
             }
         } catch (Exception e) {
             log.error("ERROR due onEvent(DataPublishEvent)", e);
