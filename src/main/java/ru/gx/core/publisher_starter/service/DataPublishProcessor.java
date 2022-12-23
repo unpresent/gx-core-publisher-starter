@@ -71,90 +71,115 @@ public class DataPublishProcessor {
 
     public LongtimeProcess startPublishProcess(List<String> channelNames) {
         final var longtimeProcess = this.longtimeProcessService.createLongtimeProcess(null);
-        final var dataPublishEvent = new DataPublishEvent(longtimeProcess.getId());
-        dataPublishEvent.setChannelDescriptorNames(channelNames);
-        this.messagesPrioritizedQueue
-                .pushMessage(1, dataPublishEvent);
+        final var dataPublishEvent = new DataPublishEvent(longtimeProcess.getId(), channelNames, this.batchSize);
+        this.messagesPrioritizedQueue.pushMessage(1, dataPublishEvent);
         return longtimeProcess;
     }
 
     @EventListener(DataPublishEvent.class)
-    public void onEvent(@NotNull final DataPublishEvent event) {
+    public void onDataPublishEvent(@NotNull final DataPublishEvent event) {
         final var longtimeProcess =
                 event.getCurrentProcessingChannelIndex() == 0 ?
                         this.longtimeProcessService.startLongtimeProcess(event.getLongtimeProcessId()) :
                         this.longtimeProcessService.getLongtimeProcess(event.getLongtimeProcessId());
         if (longtimeProcess == null) {
-            throw new NullPointerException("LongtimeProcess has not found by id = " + event.getLongtimeProcessId());
+            throw new NullPointerException("LongtimeProcess has not found by id = " + event.getLongtimeProcessId() + "!");
         }
         if (event.getCurrentProcessingChannelIndex() == 0) {
             longtimeProcess.setTotal(event.getChannelDescriptorNames().size());
         }
         longtimeProcess.setCurrent(event.getCurrentProcessingChannelIndex() + 1);
 
-        final var channel = event.getChannelDescriptorNames().get(event.getCurrentProcessingChannelIndex());
+        final var channelName = event.getCurrentChannelName();
         final var channelHandlerDescriptor =
-                this.redisOutcomeTopicsConfiguration.get(channel);
-        log.info("Processing channel: {}, event: {}", channel, event);
+                this.redisOutcomeTopicsConfiguration.get(channelName);
+        final var context = event.getContext();
+
+        log.info(
+                "/onDataPublishEvent()/longProcessId: {}/channel: {}/ Before processing channelIndex: {}, page: {}, context.batchSize: {}",
+                longtimeProcess.getId(),
+                channelName,
+                event.getCurrentProcessingChannelIndex(),
+                event.getCurrentPage(),
+                context.getBatchSize()
+        );
+
         try {
             if (channelHandlerDescriptor.getApi() == null) {
-                throw new IllegalStateException("ChannelHandler descriptor is null: " + channelHandlerDescriptor);
+                throw new IllegalStateException("ChannelHandler descriptor is null: " + channelHandlerDescriptor + "!");
             }
 
-            final EntityUploadingDescriptor<? extends ChannelApiDescriptor<? extends Message<? extends MessageBody>>,
-                    EntityObject, DataObject> entityUploadingDescriptor =
-                    entitiesUploadingConfiguration.getByChannel(channelHandlerDescriptor.getApi());
+            final var entityUploadingDescriptor =
+                    this.entitiesUploadingConfiguration.getByChannel(channelHandlerDescriptor.getApi());
             final var repository = entityUploadingDescriptor.getRepository();
-            final var channelName = entityUploadingDescriptor.getChannelApiDescriptor().getName();
+            final var channelApiName = entityUploadingDescriptor.getChannelApiDescriptor().getName();
             if (repository == null) {
                 throw new EntitiesDtoLinksConfigurationException(
-                        "Can't get CrudRepository by ChannelApi "
-                                + channelName
+                        "/onDataPublishEvent()/longProcessId: " + longtimeProcess.getId() + "/channel: " + channelApiName + "/ Can't get CrudRepository by ChannelApi!"
                 );
             }
 
             final var converter = entityUploadingDescriptor.getDtoFromEntityConverter();
             if (converter == null) {
                 throw new EntitiesDtoLinksConfigurationException(
-                        "Can't get Converter by ChannelApi "
-                                + channelName
+                        "/onDataPublishEvent()/longProcessId: " + longtimeProcess.getId() + "/channel: " + channelApiName + "/ Can't get Converter by ChannelApi!"
                 );
             }
 
             final var keyExtractor = entityUploadingDescriptor.getKeyExtractor();
             if (keyExtractor == null) {
                 throw new EntitiesDtoLinksConfigurationException(
-                        "Can't get KeyExtractor by ChannelApi "
-                                + channelName
+                        "/onDataPublishEvent()/longProcessId: " + longtimeProcess.getId()
+                                + "/channel: " + channelApiName
+                                + "/ Can't get KeyExtractor by ChannelApi!"
                 );
             }
 
-            PublishSnapshotContext context = event.getContext();
-            if (event.getContext() == null) {
-                context = new PublishSnapshotContext();
-                event.setContext(context);
-                context.setId(UUID.randomUUID());
-                context.setBatchSize(batchSize);
-            }
-
-            //вытягиваем страницу
-            final var entityObjects = repository.findAll(PageRequest.of(event.getCurrentPage(), batchSize));
+            // вытягиваем страницу
+            var debugDateTime = System.currentTimeMillis();
+            final var entityObjects = repository
+                    .findAll(PageRequest.of(event.getCurrentPage(), batchSize));
+            log.info(
+                    "/onDataPublishEvent()/longProcessId: {}/channel: {}/ Loaded from DB {} rows in page {} of {} in {} ms",
+                    longtimeProcess.getId(),
+                    channelApiName,
+                    entityObjects.getSize(),
+                    event.getCurrentPage(),
+                    entityObjects.getTotalPages(),
+                    System.currentTimeMillis() - debugDateTime
+            );
             if (entityObjects.getTotalPages() == 0) {
-                log.info("No entities found for channel: {}, finishing process.", channelName);
+                log.info(
+                        "/onDataPublishEvent()/longProcessId: {}/channel: {}/ No entities found, finishing process.",
+                        longtimeProcess.getId(),
+                        channelApiName
+                );
             }
-            log.info("Uploading page {} of {} for {}", event.getCurrentPage() + 1, entityObjects.getTotalPages(),
-                    channelName);
 
             // Преобразуем в список DTO
+            debugDateTime = System.currentTimeMillis();
             final var dataObjects = new ArrayList<DataObject>();
             converter.fillDtoCollectionFromSource(dataObjects, entityObjects.getContent());
+            log.info(
+                    "/onDataPublishEvent()/longProcessId: {}/channel: {}/ Converted to DTO {} rows in {} ms",
+                    longtimeProcess.getId(),
+                    channelApiName,
+                    dataObjects.size(),
+                    System.currentTimeMillis() - debugDateTime
+            );
 
             // Выгружаем данные
+            debugDateTime = System.currentTimeMillis();
             final var redisDescriptor = getRedisOutcomeDescriptorByChannelApi(
                     entityUploadingDescriptor.getChannelApiDescriptor()
             );
             if (dataObjects.size() > 0) {
                 if (!entityObjects.hasNext()) {
+                    log.info(
+                            "/onDataPublishEvent()/longProcessId: {}/channel: {}/ context.setLast(true)",
+                            longtimeProcess.getId(),
+                            channelApiName
+                    );
                     context.setLast(true);
                 }
                 this.redisUploader
@@ -165,11 +190,18 @@ public class DataPublishProcessor {
                                 true,
                                 context
                         );
+                log.info(
+                        "/onDataPublishEvent()/longProcessId: {}/channel: {}/ Uploaded into Redis {} rows in page {} of {} in {} ms",
+                        longtimeProcess.getId(),
+                        channelApiName,
+                        dataObjects.size(),
+                        event.getCurrentPage(),
+                        entityObjects.getTotalPages(),
+                        System.currentTimeMillis() - debugDateTime
+                );
             }
 
-            log.info("Page {} of {} for {} uploaded", event.getCurrentPage() + 1, entityObjects.getTotalPages(),
-                    channelName);
-            event.setCurrentPageLast(!entityObjects.hasNext());
+            var isFinish = false;
             if (context.isLast()) {
                 context.setLast(false);
             }
@@ -180,13 +212,20 @@ public class DataPublishProcessor {
                     event.setCurrentProcessingChannelIndex(event.getCurrentProcessingChannelIndex() + 1);
                     //начинаем обрабатывать следующий канал с нулевой страницы
                     event.setCurrentPage(0);
+                } else {
+                    isFinish = true;
                 }
             } else {
                 // обрабатываем этот же канал следующую страницу
                 event.setCurrentPage(event.getCurrentPage() + 1);
             }
-            if (event.getCurrentProcessingChannelIndex() == event.getChannelDescriptorNames().size() - 1
-                    && event.isCurrentPageLast()) {
+            if (isFinish) {
+                log.info(
+                        "/onDataPublishEvent()/longProcessId: {}/channel: {}/ CALL finishLongtimeProcess()",
+                        longtimeProcess.getId(),
+                        channelApiName
+                );
+
                 // последняя страница, заканчиваем процесс
                 this.longtimeProcessService.finishLongtimeProcess(event.getLongtimeProcessId());
             } else {
