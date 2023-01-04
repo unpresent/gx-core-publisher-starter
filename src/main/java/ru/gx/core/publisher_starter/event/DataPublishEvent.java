@@ -42,5 +42,4 @@ public class DataPublishEvent extends LongtimeProcessEvent {
     public String getCurrentChannelName() {
         return getChannelDescriptorNames().get(this.getCurrentProcessingChannelIndex());
     }
-
 }
